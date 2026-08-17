@@ -4,6 +4,15 @@
 
 ## [Unreleased]
 
+## [0.1.1] - 2026-08-17
+
+### Fixed
+
+- 修复原文区和翻译区无法使用鼠标滚轮及覆盖式滚动条的问题
+- 修复滚动条隐藏后的残留像素和滚动时的文字闪烁
+- 修复长文本触发界面消息重入时可能卡死的问题
+- 缓存翻译结果默认从顶部显示，不再自动滚动到底部
+
 ## [0.1.0] - 2026-08-17
 
 ### Added
@@ -14,5 +23,6 @@
 - 本地语言识别、SQLite LRU 缓存及开机自启
 - 可配置窗口定位、置顶、尺寸和上下分隔比例
 
-[Unreleased]: https://github.com/4fuu/fy/compare/v0.1.0...HEAD
+[Unreleased]: https://github.com/4fuu/fy/compare/v0.1.1...HEAD
+[0.1.1]: https://github.com/4fuu/fy/compare/v0.1.0...v0.1.1
 [0.1.0]: https://github.com/4fuu/fy/releases/tag/v0.1.0

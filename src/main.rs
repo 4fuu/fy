@@ -27,10 +27,10 @@ use windows_sys::Win32::{
         BeginPaint, CLEARTYPE_QUALITY, CLIP_DEFAULT_PRECIS, CreateFontW, DC_BRUSH, DC_PEN,
         DEFAULT_CHARSET, DEFAULT_GUI_FONT, DEFAULT_PITCH, DT_LEFT, DT_SINGLELINE, DT_VCENTER,
         DeleteObject, DrawTextW, EndPaint, FW_NORMAL, FillRect, GetDC, GetMonitorInfoW,
-        GetStockObject, HFONT, InvalidateRect, LineTo, MONITOR_DEFAULTTONEAREST, MONITORINFO,
-        MonitorFromPoint, MoveToEx, NULL_PEN, OUT_DEFAULT_PRECIS, PAINTSTRUCT, ReleaseDC,
-        RoundRect, SelectObject, SetBkColor, SetBkMode, SetDCBrushColor, SetDCPenColor,
-        SetTextColor, TRANSPARENT,
+        GetStockObject, GetTextMetricsW, HFONT, InvalidateRect, LineTo, MONITOR_DEFAULTTONEAREST,
+        MONITORINFO, MonitorFromPoint, MoveToEx, NULL_PEN, OUT_DEFAULT_PRECIS, PAINTSTRUCT,
+        ReleaseDC, RoundRect, SelectObject, SetBkColor, SetBkMode, SetDCBrushColor, SetDCPenColor,
+        SetTextColor, TEXTMETRICW, TRANSPARENT,
     },
     System::{
         LibraryLoader::GetModuleHandleW,
@@ -41,7 +41,8 @@ use windows_sys::Win32::{
     },
     UI::{
         Controls::{
-            EM_GETFIRSTVISIBLELINE, EM_GETLINECOUNT, EM_LINESCROLL, SetWindowTheme, WM_MOUSELEAVE,
+            EM_GETFIRSTVISIBLELINE, EM_GETLINECOUNT, EM_LINESCROLL, EM_REPLACESEL, EM_SETSEL,
+            SetWindowTheme, WM_MOUSELEAVE,
         },
         HiDpi::{DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2, SetProcessDpiAwarenessContext},
         Input::KeyboardAndMouse::{
@@ -67,10 +68,10 @@ use windows_sys::Win32::{
             TPM_BOTTOMALIGN, TPM_LEFTALIGN, TPM_RIGHTBUTTON, TrackPopupMenu, TranslateMessage,
             WA_INACTIVE, WM_ACTIVATE, WM_APP, WM_CLOSE, WM_COMMAND, WM_CTLCOLOREDIT,
             WM_CTLCOLORSTATIC, WM_DESTROY, WM_ERASEBKGND, WM_GETMINMAXINFO, WM_HOTKEY, WM_KEYDOWN,
-            WM_LBUTTONDBLCLK, WM_LBUTTONDOWN, WM_LBUTTONUP, WM_MOUSEMOVE, WM_NCHITTEST,
-            WM_NCLBUTTONDOWN, WM_PAINT, WM_RBUTTONUP, WM_SETFONT, WM_SIZE, WM_TIMER, WNDCLASSW,
-            WS_CHILD, WS_CLIPCHILDREN, WS_EX_TOOLWINDOW, WS_EX_TOPMOST, WS_POPUP, WS_TABSTOP,
-            WS_VISIBLE,
+            WM_LBUTTONDBLCLK, WM_LBUTTONDOWN, WM_LBUTTONUP, WM_MOUSEMOVE, WM_MOUSEWHEEL,
+            WM_NCHITTEST, WM_NCLBUTTONDOWN, WM_PAINT, WM_RBUTTONUP, WM_SETFONT, WM_SIZE, WM_TIMER,
+            WNDCLASSW, WS_CHILD, WS_CLIPCHILDREN, WS_EX_TOOLWINDOW, WS_EX_TOPMOST, WS_POPUP,
+            WS_TABSTOP, WS_VISIBLE,
         },
     },
 };
@@ -860,11 +861,25 @@ unsafe extern "system" fn window_proc(
         }
         WM_TRANSLATION_DELTA => {
             let delta = unsafe { Box::from_raw(lparam as *mut TranslationDelta) };
-            if let Some(mut app) = app_lock()
+            let output = if let Some(mut app) = app_lock()
                 && delta.id == app.request_id
             {
-                app.streamed_text.push_str(&delta.text);
-                set_text(app.output, &app.streamed_text);
+                if delta.from_cache {
+                    app.streamed_text.clone_from(&delta.text);
+                } else {
+                    app.streamed_text.push_str(&delta.text);
+                }
+                Some(app.output)
+            } else {
+                None
+            };
+            if let Some(output) = output {
+                if delta.from_cache {
+                    set_text(output, &delta.text);
+                    scroll_edit_to_top(output);
+                } else {
+                    append_text(output, &delta.text);
+                }
             }
             0
         }
@@ -997,6 +1012,22 @@ unsafe extern "system" fn edit_proc(
         unsafe { ReleaseCapture() };
         set_scrollbar_hover(hwnd, scrollbar_hit_test(hwnd, client_point(lparam)));
         return 0;
+    } else if message == WM_MOUSEWHEEL {
+        let delta = (wparam >> 16) as u16 as i16 as i32;
+        if delta != 0 {
+            let steps = delta.unsigned_abs().div_ceil(120) as i32;
+            let lines = -delta.signum() * steps * 3;
+            unsafe {
+                windows_sys::Win32::UI::WindowsAndMessaging::SendMessageW(
+                    hwnd,
+                    EM_LINESCROLL,
+                    0,
+                    lines as isize,
+                );
+            }
+            repaint_scrollbar_gutter(hwnd);
+        }
+        return 0;
     }
     if message == WM_KEYDOWN {
         if wparam as u16 == VK_ESCAPE {
@@ -1011,8 +1042,9 @@ unsafe extern "system" fn edit_proc(
         }
     }
     let result = unsafe { DefSubclassProc(hwnd, message, wparam, lparam) };
-    if message == WM_PAINT && app_lock().is_some_and(|app| app.scrollbar_hover == hwnd) {
-        unsafe { draw_overlay_scrollbar(hwnd) };
+    if message == WM_PAINT {
+        let visible = app_try_lock().is_some_and(|app| app.scrollbar_hover == hwnd);
+        unsafe { paint_scrollbar_gutter(hwnd, visible) };
     }
     result
 }
@@ -1025,7 +1057,7 @@ fn scrollbar_thumb(hwnd: HWND) -> Option<RECT> {
         windows_sys::Win32::UI::WindowsAndMessaging::SendMessageW(hwnd, EM_GETLINECOUNT, 0, 0)
             as i32
     };
-    let visible = (height / 22).max(1);
+    let visible = visible_edit_lines(hwnd, height);
     if lines <= visible || height < 28 {
         return None;
     }
@@ -1049,6 +1081,29 @@ fn scrollbar_thumb(hwnd: HWND) -> Option<RECT> {
     })
 }
 
+fn visible_edit_lines(hwnd: HWND, height: i32) -> i32 {
+    let font = app_try_lock().map(|app| app.font).unwrap_or(null_mut());
+    let hdc = unsafe { GetDC(hwnd) };
+    if hdc.is_null() {
+        return (height / 18).max(1);
+    }
+    let old_font = if font.is_null() {
+        null_mut()
+    } else {
+        unsafe { SelectObject(hdc, font) }
+    };
+    let mut metrics: TEXTMETRICW = unsafe { zeroed() };
+    let measured = unsafe { GetTextMetricsW(hdc, &mut metrics) } != 0;
+    unsafe {
+        if !old_font.is_null() {
+            SelectObject(hdc, old_font);
+        }
+        ReleaseDC(hwnd, hdc);
+    }
+    let line_height = if measured { metrics.tmHeight } else { 18 }.max(1);
+    (height / line_height).max(1)
+}
+
 fn scrollbar_hit_test(hwnd: HWND, point: POINT) -> bool {
     let mut client: RECT = unsafe { zeroed() };
     unsafe { GetClientRect(hwnd, &mut client) };
@@ -1065,7 +1120,27 @@ fn set_scrollbar_hover(hwnd: HWND, visible: bool) {
         }
     }
     if changed {
-        unsafe { InvalidateRect(hwnd, null(), 0) };
+        repaint_scrollbar_gutter(hwnd);
+    }
+}
+
+fn repaint_scrollbar_gutter(hwnd: HWND) {
+    let visible = app_lock().is_some_and(|app| app.scrollbar_hover == hwnd);
+    unsafe { paint_scrollbar_gutter(hwnd, visible) };
+}
+
+fn scroll_edit_to_top(hwnd: HWND) {
+    let first = unsafe {
+        windows_sys::Win32::UI::WindowsAndMessaging::SendMessageW(
+            hwnd,
+            EM_GETFIRSTVISIBLELINE,
+            0,
+            0,
+        ) as isize
+    };
+    unsafe {
+        windows_sys::Win32::UI::WindowsAndMessaging::SendMessageW(hwnd, EM_SETSEL, 0, 0);
+        windows_sys::Win32::UI::WindowsAndMessaging::SendMessageW(hwnd, EM_LINESCROLL, 0, -first);
     }
 }
 
@@ -1079,7 +1154,7 @@ fn scroll_edit_to(hwnd: HWND, y: i32) {
         windows_sys::Win32::UI::WindowsAndMessaging::SendMessageW(hwnd, EM_GETLINECOUNT, 0, 0)
             as i32
     };
-    let visible = ((client.bottom - client.top) / 22).max(1);
+    let visible = visible_edit_lines(hwnd, client.bottom - client.top);
     let max_first = (lines - visible).max(1);
     let travel = (client.bottom - 8 - (thumb.bottom - thumb.top)).max(1);
     let target = ((y - 4 - (thumb.bottom - thumb.top) / 2).clamp(0, travel) * max_first) / travel;
@@ -1098,14 +1173,14 @@ fn scroll_edit_to(hwnd: HWND, y: i32) {
             0,
             (target - current) as isize,
         );
-        InvalidateRect(hwnd, null(), 0);
     }
+    repaint_scrollbar_gutter(hwnd);
 }
 
-unsafe fn draw_overlay_scrollbar(hwnd: HWND) {
-    let Some(thumb) = scrollbar_thumb(hwnd) else {
-        return;
-    };
+unsafe fn paint_scrollbar_gutter(hwnd: HWND, visible: bool) {
+    let mut gutter: RECT = unsafe { zeroed() };
+    unsafe { GetClientRect(hwnd, &mut gutter) };
+    gutter.left = (gutter.right - 12).max(gutter.left);
     let hdc = unsafe { GetDC(hwnd) };
     if hdc.is_null() {
         return;
@@ -1113,8 +1188,12 @@ unsafe fn draw_overlay_scrollbar(hwnd: HWND) {
     unsafe {
         let old_brush = SelectObject(hdc, GetStockObject(DC_BRUSH));
         let old_pen = SelectObject(hdc, GetStockObject(NULL_PEN));
-        SetDCBrushColor(hdc, COLOR_MUTED);
-        RoundRect(hdc, thumb.left, thumb.top, thumb.right, thumb.bottom, 4, 4);
+        SetDCBrushColor(hdc, COLOR_CARD);
+        FillRect(hdc, &gutter, GetStockObject(DC_BRUSH));
+        if visible && let Some(thumb) = scrollbar_thumb(hwnd) {
+            SetDCBrushColor(hdc, COLOR_MUTED);
+            RoundRect(hdc, thumb.left, thumb.top, thumb.right, thumb.bottom, 4, 4);
+        }
         SelectObject(hdc, old_brush);
         SelectObject(hdc, old_pen);
         ReleaseDC(hwnd, hdc);
@@ -1168,10 +1247,11 @@ fn start_translation(source: String) {
     };
     thread::spawn(move || {
         let hwnd = hwnd as HWND;
-        let value = translator::translate(&config, &cache, &source, |text| {
+        let value = translator::translate(&config, &cache, &source, |text, from_cache| {
             let delta = TranslationDelta {
                 id,
                 text: text.to_owned(),
+                from_cache,
             };
             unsafe {
                 PostMessageW(
@@ -1199,6 +1279,7 @@ fn start_translation(source: String) {
 struct TranslationDelta {
     id: u64,
     text: String,
+    from_cache: bool,
 }
 
 struct TranslationResult {
@@ -1536,11 +1617,33 @@ unsafe fn move_to_rect(hwnd: HWND, rect: RECT) {
 }
 
 fn set_text(hwnd: HWND, text: &str) {
-    let windows_text = text
-        .replace("\r\n", "\n")
-        .replace('\r', "\n")
-        .replace('\n', "\r\n");
+    let windows_text = windows_text(text);
     unsafe { SetWindowTextW(hwnd, wide(&windows_text).as_ptr()) };
+}
+
+fn append_text(hwnd: HWND, text: &str) {
+    let windows_text = windows_text(text);
+    let end = unsafe { GetWindowTextLengthW(hwnd) } as usize;
+    unsafe {
+        windows_sys::Win32::UI::WindowsAndMessaging::SendMessageW(
+            hwnd,
+            EM_SETSEL,
+            end,
+            end as isize,
+        );
+        windows_sys::Win32::UI::WindowsAndMessaging::SendMessageW(
+            hwnd,
+            EM_REPLACESEL,
+            0,
+            wide(&windows_text).as_ptr() as isize,
+        );
+    }
+}
+
+fn windows_text(text: &str) -> String {
+    text.replace("\r\n", "\n")
+        .replace('\r', "\n")
+        .replace('\n', "\r\n")
 }
 
 fn set_title(hwnd: HWND, title: &str) {
@@ -1569,6 +1672,10 @@ fn show_error(hwnd: HWND, message: &str) {
 
 fn app_lock() -> Option<std::sync::MutexGuard<'static, App>> {
     APP.get().map(|app| app.lock().unwrap())
+}
+
+fn app_try_lock() -> Option<std::sync::MutexGuard<'static, App>> {
+    APP.get().and_then(|app| app.try_lock().ok())
 }
 
 fn wide(value: &str) -> Vec<u16> {

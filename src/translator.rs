@@ -15,7 +15,7 @@ pub fn translate(
     config: &Config,
     cache_path: &Path,
     source: &str,
-    mut on_delta: impl FnMut(&str),
+    mut on_delta: impl FnMut(&str, bool),
 ) -> Result<String> {
     let source = source.trim();
     if source.is_empty() {
@@ -53,7 +53,7 @@ pub fn translate(
     ]);
     let mut cache = Cache::open(cache_path, config.cache_limit_bytes())?;
     if let Some(value) = cache.get(&key)? {
-        on_delta(&value);
+        on_delta(&value, true);
         return Ok(value);
     }
 
@@ -86,7 +86,7 @@ pub fn translate(
                         }
                         if let Some(delta) = extract_stream_delta(provider.api_format, &event) {
                             translated.push_str(&delta);
-                            on_delta(&delta);
+                            on_delta(&delta, false);
                         }
                     }
                     Ok::<String, anyhow::Error>(translated)
@@ -99,7 +99,7 @@ pub fn translate(
                     .context("AI 请求失败")?;
                     let translated =
                         extract_output(provider.api_format, &response).context("AI 未返回文本")?;
-                    on_delta(&translated);
+                    on_delta(&translated, false);
                     Ok::<String, anyhow::Error>(translated)
                 }
             },
@@ -401,13 +401,20 @@ mod tests {
                 .as_nanos()
         ));
         let mut deltas = Vec::new();
-        let translated = translate(&config, &cache_path, "hello", |delta| {
-            deltas.push(delta.to_owned());
+        let translated = translate(&config, &cache_path, "hello", |delta, from_cache| {
+            deltas.push((delta.to_owned(), from_cache));
         })
         .unwrap();
 
         assert_eq!(translated, "你好");
-        assert_eq!(deltas, ["你", "好"]);
+        assert_eq!(deltas, [("你".into(), false), ("好".into(), false)]);
+        let mut cached = None;
+        let translated = translate(&config, &cache_path, "hello", |text, from_cache| {
+            cached = Some((text.to_owned(), from_cache));
+        })
+        .unwrap();
+        assert_eq!(translated, "你好");
+        assert_eq!(cached, Some(("你好".into(), true)));
         server.join().unwrap();
         fs::remove_file(cache_path).unwrap();
     }
