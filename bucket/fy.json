@@ -1,31 +1,31 @@
 {
-    "version": "0.1.0",
-    "description": "Lightweight Windows selection translator powered by OpenAI-compatible APIs",
-    "homepage": "https://github.com/4fuu/fy",
-    "license": "GPL-3.0-only",
-    "architecture": {
-        "64bit": {
-            "url": "https://github.com/4fuu/fy/releases/download/v0.1.0/fy.exe",
-            "hash": "67ab473a4357764aa2e5c4fb69cbaa0d7f118c0ff81d58d44597b5b41ff22eb7"
-        }
-    },
-    "bin": "fy.exe",
-    "shortcuts": [
-        [
-            "fy.exe",
-            "fy"
-        ]
-    ],
-    "notes": "首次运行会在 ~/.config/fy/config.toml 创建配置模板。填写 API Key 后，从托盘菜单重新加载配置。",
-    "checkver": "github",
-    "autoupdate": {
-        "architecture": {
-            "64bit": {
-                "url": "https://github.com/4fuu/fy/releases/download/v$version/fy.exe"
-            }
-        },
-        "hash": {
-            "url": "$url.sha256"
-        }
+  "version": "0.1.0",
+  "description": "Lightweight Windows selection translator powered by OpenAI-compatible APIs",
+  "homepage": "https://github.com/4fuu/fy",
+  "license": "GPL-3.0-only",
+  "architecture": {
+    "64bit": {
+      "url": "https://github.com/4fuu/fy/releases/download/v0.1.0/fy.exe",
+      "hash": "dc4af057e8e3196a4fe7eefca6df17dd225de7795b13b8f39c972acb2062c697"
     }
+  },
+  "bin": "fy.exe",
+  "shortcuts": [
+    [
+      "fy.exe",
+      "fy"
+    ]
+  ],
+  "notes": "首次运行会在 ~/.config/fy/config.toml 创建配置模板。填写 API Key 后，从托盘菜单重新加载配置。",
+  "checkver": "github",
+  "autoupdate": {
+    "architecture": {
+      "64bit": {
+        "url": "https://github.com/4fuu/fy/releases/download/v$version/fy.exe"
+      }
+    },
+    "hash": {
+      "url": "$url.sha256"
+    }
+  }
 }
