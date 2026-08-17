@@ -1,0 +1,45 @@
+name: Bug 报告
+description: 报告可复现的错误或异常行为
+title: "[Bug]: "
+labels: [bug]
+body:
+  - type: checkboxes
+    attributes:
+      label: 提交前检查
+      options:
+        - label: 我已阅读 README，并确认没有重复 Issue
+          required: true
+        - label: 我已移除配置、日志和截图中的 API Key
+          required: true
+  - type: input
+    attributes:
+      label: fy 版本
+      placeholder: 例如 0.1.0
+    validations:
+      required: true
+  - type: input
+    attributes:
+      label: Windows 版本
+      placeholder: 例如 Windows 11 24H2
+    validations:
+      required: true
+  - type: textarea
+    attributes:
+      label: 问题描述
+      description: 请说明实际行为、预期行为和影响。
+    validations:
+      required: true
+  - type: textarea
+    attributes:
+      label: 复现步骤
+      placeholder: |
+        1. …
+        2. …
+        3. …
+    validations:
+      required: true
+  - type: textarea
+    attributes:
+      label: 相关配置或日志
+      description: 请删除 API Key 和其他敏感信息。
+      render: text
