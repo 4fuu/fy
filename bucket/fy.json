@@ -1,12 +1,12 @@
 {
-  "version": "0.1.1",
+  "version": "0.1.2",
   "description": "Lightweight Windows selection translator powered by OpenAI-compatible APIs",
   "homepage": "https://github.com/4fuu/fy",
   "license": "GPL-3.0-only",
   "architecture": {
     "64bit": {
-      "url": "https://github.com/4fuu/fy/releases/download/v0.1.1/fy.exe",
-      "hash": "6a1a010a8a5d54bd8d5b2c7004fc3de581846c1389eb8e598266fb731c2a6a54"
+      "url": "https://github.com/4fuu/fy/releases/download/v0.1.2/fy.exe",
+      "hash": "08e22d0daac02144c389d00c451e29444c2820964604fdc3dfac93b405bd35c3"
     }
   },
   "bin": "fy.exe",
