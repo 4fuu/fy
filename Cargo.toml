@@ -1,6 +1,6 @@
 [package]
 name = "fy"
-version = "0.1.1"
+version = "0.1.2"
 edition = "2024"
 description = "A lightweight Windows selection translator powered by OpenAI-compatible APIs"
 license = "GPL-3.0-only"
@@ -9,6 +9,9 @@ homepage = "https://github.com/4fuu/fy"
 readme = "README.md"
 keywords = ["translation", "windows", "openai", "tray"]
 categories = ["gui"]
+
+[build-dependencies]
+winresource = "0.1"
 
 [dependencies]
 anyhow = "1.0"

@@ -4,6 +4,12 @@
 
 ## [Unreleased]
 
+## [0.1.2] - 2026-08-18
+
+### Fixed
+
+- 将应用图标嵌入 Windows 可执行文件，使资源管理器能够正确显示 EXE 图标
+
 ## [0.1.1] - 2026-08-17
 
 ### Fixed
@@ -23,6 +29,7 @@
 - 本地语言识别、SQLite LRU 缓存及开机自启
 - 可配置窗口定位、置顶、尺寸和上下分隔比例
 
-[Unreleased]: https://github.com/4fuu/fy/compare/v0.1.1...HEAD
+[Unreleased]: https://github.com/4fuu/fy/compare/v0.1.2...HEAD
+[0.1.2]: https://github.com/4fuu/fy/compare/v0.1.1...v0.1.2
 [0.1.1]: https://github.com/4fuu/fy/compare/v0.1.0...v0.1.1
 [0.1.0]: https://github.com/4fuu/fy/releases/tag/v0.1.0
